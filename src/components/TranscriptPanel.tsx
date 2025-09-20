@@ -3,6 +3,7 @@ import { Check, Loader2, Upload } from 'lucide-react'
 import { fetchTranscript, fetchVideoMeta, type VideoMeta } from '../lib/supadata'
 import { Button } from './ui/button'
 import { extractVideoId } from '../lib/youtube'
+import { safeClipboardWrite } from '../lib/clipboard'
 
 export function TranscriptPanel({ onTranscript, onUrlChange, onExtractStart }: { onTranscript?: (text: string) => void; onUrlChange?: (url: string) => void; onExtractStart?: () => void }) {
   const [youtubeUrl, setYoutubeUrl] = useState('')
@@ -15,6 +16,12 @@ export function TranscriptPanel({ onTranscript, onUrlChange, onExtractStart }: {
   const videoId = extractVideoId(youtubeUrl)
 
   const onExtract = async () => {
+    console.log('🚀 [TranscriptPanel] 자막 추출 프로세스 시작:', {
+      url: youtubeUrl,
+      videoId: videoId,
+      timestamp: new Date().toISOString()
+    })
+
     setError(null)
     // clear whole sections immediately
     onExtractStart?.()
@@ -22,21 +29,57 @@ export function TranscriptPanel({ onTranscript, onUrlChange, onExtractStart }: {
     setVideoMeta(null)
     onTranscript?.('')
     setLoading(true)
+    
     try {
       setMetaLoading(true)
+      console.log('📡 [TranscriptPanel] 병렬 API 호출 시작 (자막 + 메타데이터)')
+      
+      const startTime = Date.now()
       const [res, meta] = await Promise.all([
         fetchTranscript({ url: youtubeUrl }),
         fetchVideoMeta(youtubeUrl),
       ])
+      const totalDuration = Date.now() - startTime
+      
+      console.log('✅ [TranscriptPanel] 병렬 API 호출 완료:', {
+        totalDuration: `${totalDuration}ms`,
+        transcriptLength: res.content?.length || 0,
+        hasMetadata: !!meta,
+        transcriptLang: res.lang,
+        availableLangs: res.availableLangs
+      })
+
       const text = res.content || ''
       setTranscript(text)
       onTranscript?.(text)
-      if (meta) setVideoMeta(meta)
+      
+      if (meta) {
+        setVideoMeta(meta)
+        console.log('📊 [TranscriptPanel] 메타데이터 설정 완료:', {
+          title: meta.title?.substring(0, 50) + '...' || 'N/A',
+          channel: meta.channelTitle,
+          duration: meta.duration
+        })
+      } else {
+        console.warn('⚠️ [TranscriptPanel] 메타데이터가 없음')
+      }
+
+      console.log('🎉 [TranscriptPanel] 자막 추출 프로세스 성공 완료')
     } catch (e: any) {
-      setError(e?.message || 'Failed to fetch transcript')
+      const errorMessage = e?.message || 'Failed to fetch transcript'
+      console.error('❌ [TranscriptPanel] 자막 추출 프로세스 실패:', {
+        error: errorMessage,
+        url: youtubeUrl,
+        videoId: videoId,
+        errorType: e?.constructor?.name || 'Unknown',
+        stack: e?.stack,
+        timestamp: new Date().toISOString()
+      })
+      setError(errorMessage)
     } finally {
       setLoading(false)
       setMetaLoading(false)
+      console.log('🏁 [TranscriptPanel] 자막 추출 프로세스 종료')
     }
   }
 
@@ -52,9 +95,18 @@ export function TranscriptPanel({ onTranscript, onUrlChange, onExtractStart }: {
         descriptionChars: videoMeta?.description?.length || 0,
       },
     }
-    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1200)
+    
+    console.log('📋 [TranscriptPanel] JSON 복사 시도')
+    const success = await safeClipboardWrite(JSON.stringify(payload, null, 2))
+    
+    if (success) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } else {
+      console.error('❌ [TranscriptPanel] 클립보드 복사 실패')
+      // 사용자에게 알림 (선택적)
+      alert('클립보드 복사에 실패했습니다. 브라우저가 HTTPS를 요구하거나 클립보드 권한이 없을 수 있습니다.')
+    }
   }
 
   return (

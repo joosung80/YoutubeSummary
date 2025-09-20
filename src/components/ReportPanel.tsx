@@ -4,6 +4,7 @@ import { generateReport, type LLMResult } from '../lib/llm'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from './ui/button'
+import { safeClipboardWrite } from '../lib/clipboard'
 
 type Mode = 'general' | 'scqa' | 'full'
 
@@ -34,7 +35,7 @@ export function ReportPanel({ initialInput }: { initialInput?: string }) {
       return
     }
     // auto copy transcript when it arrives
-    navigator.clipboard.writeText(initialInput).catch(() => {})
+    safeClipboardWrite(initialInput).catch(() => {})
   }, [initialInput])
 
   const placeholder = useMemo(
@@ -58,9 +59,17 @@ export function ReportPanel({ initialInput }: { initialInput?: string }) {
 
   const onCopy = async () => {
     if (!report) return
-    await navigator.clipboard.writeText(report)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1200)
+    
+    console.log('📋 [ReportPanel] 리포트 복사 시도')
+    const success = await safeClipboardWrite(report)
+    
+    if (success) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } else {
+      console.error('❌ [ReportPanel] 클립보드 복사 실패')
+      alert('클립보드 복사에 실패했습니다. 브라우저가 HTTPS를 요구하거나 클립보드 권한이 없을 수 있습니다.')
+    }
   }
 
   return (

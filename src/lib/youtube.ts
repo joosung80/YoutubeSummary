@@ -7,16 +7,51 @@ export type YouTubeMeta = {
 }
 
 export function extractVideoId(url: string): string | null {
+  console.log('🔍 [YouTube] 비디오 ID 추출 시도:', {
+    url,
+    urlLength: url?.length || 0,
+    timestamp: new Date().toISOString()
+  })
+
   try {
     const u = new URL(url)
+    console.log('📝 [YouTube] URL 파싱 성공:', {
+      hostname: u.hostname,
+      pathname: u.pathname,
+      search: u.search,
+      searchParams: Object.fromEntries(u.searchParams.entries())
+    })
+
     if (u.hostname.includes('youtube.com')) {
-      return u.searchParams.get('v')
+      const videoId = u.searchParams.get('v')
+      console.log('🎬 [YouTube] YouTube.com 형식 감지:', {
+        videoId,
+        hasVideoParam: !!videoId
+      })
+      return videoId
     }
+    
     if (u.hostname === 'youtu.be') {
-      return u.pathname.replace('/', '') || null
+      const videoId = u.pathname.replace('/', '') || null
+      console.log('🎬 [YouTube] youtu.be 형식 감지:', {
+        pathname: u.pathname,
+        videoId,
+        hasVideoId: !!videoId
+      })
+      return videoId
     }
+    
+    console.warn('⚠️ [YouTube] 지원하지 않는 YouTube URL 형식:', {
+      hostname: u.hostname,
+      url
+    })
     return null
-  } catch {
+  } catch (error) {
+    console.error('❌ [YouTube] URL 파싱 실패:', {
+      url,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
+    })
     return null
   }
 }
