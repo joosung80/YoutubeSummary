@@ -31,6 +31,53 @@ YouTube URL 예시: https://youtu.be/3TMnDCv4IN0
 - **Gemini API Key**: [Google AI Studio](https://ai.google.dev/)에서 발급
 - **Supadata API Key**: [Supadata](https://supadata.ai/)에서 발급
 
+#### 🔑 Gemini API Key 발급 방법
+
+Gemini API 키 발급은 Google AI Studio를 통해 간편하게 할 수 있습니다. Google 계정과 결제 수단만 준비되어 있으면, 몇 번의 클릭만으로 즉시 발급받을 수 있습니다.
+
+**준비사항**
+- Google 계정 (Gmail 등)
+- 결제용 신용/체크 카드 (무료 제공량만 사용해도 카드 정보 등록 필요)
+
+**발급 절차**
+1. **Google AI Studio 접속**
+   - [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)로 접속
+2. **로그인 및 결제정보 등록**
+   - Google 계정으로 로그인 후, 결제 계정(대한민국/KRW, 카드정보 등) 등록
+3. **API 키 생성**
+   - 상단 메뉴에서 "API 키 생성" 또는 "+ Create API key" 버튼 클릭
+   - 처음이라면 자동으로 새 프로젝트가 생성됨
+4. **API 키 복사 및 보관**
+   - 발급되는 긴 문자열 형태의 API 키를 복사해서 안전한 곳에 저장
+   - 이 키는 절대 노출하면 안 되며, 나중에 필요할 때 프로젝트 내에서 다시 확인 가능
+
+**주의사항**
+- 무료 사용량 범위 내에서는 과금이 없으나, 남용 또는 키 유출 시에는 요금이 청구될 수 있음
+- API 키는 환경변수(VITE_GEMINI_API_KEY)로 관리하면 보안에 유리합니다
+
+#### 🔑 Supadata API Key 발급 방법
+
+Supadata API는 YouTube 자막 추출을 위한 핵심 서비스입니다. 간단한 회원가입 절차를 통해 API 키를 발급받을 수 있습니다.
+
+**발급 절차**
+1. **회원가입**
+   - [https://supadata.ai/](https://supadata.ai/) 접속하여 회원가입
+2. **로그인**
+   - 가입한 계정으로 로그인
+3. **대시보드 접속**
+   - [https://dash.supadata.ai/](https://dash.supadata.ai/)로 이동
+4. **API 키 발급**
+   - Home에서 API 선택 후 발급
+   - 발급된 API 키를 안전한 곳에 저장
+
+**무료 사용량**
+- 한 달에 100건까지 무료로 사용 가능
+- 무료 한도 초과 시 유료 플랜으로 전환 필요
+
+**주의사항**
+- API 키는 환경변수(VITE_SUPADATA_API_KEY)로 관리하여 보안을 유지하세요
+- 키 유출 시 즉시 재발급받아 교체하시기 바랍니다
+
 ## 📦 설치 및 실행 방법
 
 ### 1️⃣ 로컬 개발 환경
