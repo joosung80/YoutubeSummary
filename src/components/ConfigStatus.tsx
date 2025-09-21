@@ -1,8 +1,40 @@
 import { AlertCircle, CheckCircle, ExternalLink } from 'lucide-react'
-import { getConfigStatus } from '../lib/config'
+import { useState, useEffect } from 'react'
+import { getConfigStatusAsync } from '../lib/config'
 
 export function ConfigStatus() {
-  const { isValid, errors } = getConfigStatus()
+  const [isValid, setIsValid] = useState<boolean | null>(null)
+  const [errors, setErrors] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    async function checkConfig() {
+      try {
+        const status = await getConfigStatusAsync()
+        setIsValid(status.isValid)
+        setErrors(status.errors)
+      } catch (error) {
+        console.error('Config check failed:', error)
+        setIsValid(false)
+        setErrors(['Failed to load configuration'])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    checkConfig()
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+        <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+          <div className="size-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+          <span className="text-sm font-medium">Loading configuration...</span>
+        </div>
+      </div>
+    )
+  }
 
   if (isValid) {
     return (

@@ -1,20 +1,68 @@
-// Configuration and environment variable validation
+// Configuration with GCP Secret Manager integration
+import { getApiKeys } from './secret-manager'
 
 interface Config {
   geminiApiKey: string
   supadataApiKey: string
 }
 
-function validateConfig(): Config {
-  console.log('🔧 [Config] 환경변수 검증 시작:', {
+let configCache: Config | null = null
+let configPromise: Promise<Config> | null = null
+
+async function validateConfig(): Promise<Config> {
+  // Return cached config if available
+  if (configCache) {
+    return configCache
+  }
+
+  // Return existing promise if already in progress
+  if (configPromise) {
+    return configPromise
+  }
+
+  console.log('🔧 [Config] API 키 검증 시작:', {
     timestamp: new Date().toISOString(),
     env: import.meta.env.MODE || 'unknown'
   })
 
+  configPromise = (async () => {
+    try {
+      // Try to get API keys from GCP Secret Manager first
+      const { geminiApiKey, supadataApiKey } = await getApiKeys()
+
+      console.log('✅ [Config] API 키 검증 성공:', {
+        hasGeminiKey: !!geminiApiKey,
+        geminiKeyLength: geminiApiKey?.length || 0,
+        geminiKeyPrefix: geminiApiKey?.substring(0, 8) + '...' || 'N/A',
+        hasSupadataKey: !!supadataApiKey,
+        supadataKeyLength: supadataApiKey?.length || 0,
+        supadataKeyPrefix: supadataApiKey?.substring(0, 8) + '...' || 'N/A',
+        source: 'GCP Secret Manager or Environment Variables'
+      })
+
+      const config: Config = { geminiApiKey, supadataApiKey }
+      configCache = config
+      return config
+    } catch (error) {
+      console.error('❌ [Config] API 키 검증 실패:', error)
+      throw new Error(
+        `Failed to load API keys: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
+        'Please ensure GCP Secret Manager is configured or environment variables are set.'
+      )
+    }
+  })()
+
+  return configPromise
+}
+
+// Legacy synchronous function for backward compatibility
+function validateConfigSync(): Config {
+  console.warn('⚠️ [Config] validateConfigSync is deprecated, use validateConfigAsync instead')
+  
   const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY
   const supadataApiKey = import.meta.env.VITE_SUPADATA_API_KEY
 
-  console.log('🔍 [Config] 환경변수 상태 확인:', {
+  console.log('🔍 [Config] 환경변수 상태 확인 (Sync):', {
     hasGeminiKey: !!geminiApiKey,
     geminiKeyLength: geminiApiKey?.length || 0,
     geminiKeyPrefix: geminiApiKey?.substring(0, 8) + '...' || 'N/A',
@@ -51,7 +99,7 @@ function validateConfig(): Config {
     )
   }
 
-  console.log('✅ [Config] 설정 검증 성공:', {
+  console.log('✅ [Config] 설정 검증 성공 (Sync):', {
     geminiKeyValid: true,
     supadataKeyValid: true,
     timestamp: new Date().toISOString()
@@ -63,11 +111,31 @@ function validateConfig(): Config {
   }
 }
 
+// Export async config function
 export const config = validateConfig()
+
+// Export async version for new code
+export const configAsync = validateConfig
+
+// Export sync version for backward compatibility
+export const configSync = validateConfigSync
 
 export function getConfigStatus(): { isValid: boolean; errors: string[] } {
   try {
-    validateConfig()
+    validateConfigSync()
+    return { isValid: true, errors: [] }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown configuration error'
+    return { 
+      isValid: false, 
+      errors: message.split('\n').filter(line => line.trim()) 
+    }
+  }
+}
+
+export async function getConfigStatusAsync(): Promise<{ isValid: boolean; errors: string[] }> {
+  try {
+    await validateConfig()
     return { isValid: true, errors: [] }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown configuration error'

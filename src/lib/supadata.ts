@@ -26,7 +26,8 @@ export async function fetchTranscript(params: {
     timestamp: new Date().toISOString()
   })
 
-  const { config } = await import('./config')
+  const { configAsync } = await import('./config')
+  const config = await configAsync()
   const apiKey = config.supadataApiKey
 
   console.log('🔑 [Supadata] API Key 상태:', {
@@ -119,7 +120,8 @@ export async function fetchVideoMeta(url: string): Promise<VideoMeta | null> {
 
   console.log('🆔 [Supadata] 추출된 비디오 ID:', id)
 
-  const { config } = await import('./config')
+  const { configAsync } = await import('./config')
+  const config = await configAsync()
   const apiKey = config.supadataApiKey
 
   console.log('🔑 [Supadata] 메타데이터 API Key 상태:', {

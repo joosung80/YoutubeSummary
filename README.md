@@ -27,9 +27,11 @@ YouTube URL 예시: https://youtu.be/3TMnDCv4IN0
 
 ### 사전 요구사항
 
-다음 API 키가 필요합니다:
+다음이 필요합니다:
 - **Gemini API Key**: [Google AI Studio](https://ai.google.dev/)에서 발급
 - **Supadata API Key**: [Supadata](https://supadata.ai/)에서 발급
+- **GCP 프로젝트**: Google Cloud Platform 프로젝트
+- **GCP 서비스 계정**: Secret Manager 접근 권한이 있는 서비스 계정
 
 #### 🔑 Gemini API Key 발급 방법
 
@@ -75,8 +77,58 @@ Supadata API는 YouTube 자막 추출을 위한 핵심 서비스입니다. 간�
 - 무료 한도 초과 시 유료 플랜으로 전환 필요
 
 **주의사항**
-- API 키는 환경변수(VITE_SUPADATA_API_KEY)로 관리하여 보안을 유지하세요
+- API 키는 GCP Secret Manager로 관리하여 보안을 유지하세요
 - 키 유출 시 즉시 재발급받아 교체하시기 바랍니다
+
+#### 🔐 API Key 우선순위
+
+이 애플리케이션은 다음 순서로 API 키를 찾습니다:
+
+1. **환경변수** (최우선) - 개발 및 로컬 테스트용
+2. **GCP Secret Manager** (폴백) - 프로덕션 환경용
+
+환경변수가 설정되어 있으면 GCP Secret Manager를 사용하지 않고, 환경변수가 없을 때만 GCP Secret Manager에서 키를 가져옵니다.
+
+#### 🔐 GCP Secret Manager 설정 방법
+
+프로덕션 환경에서는 GCP Secret Manager를 사용하여 API 키를 안전하게 관리할 수 있습니다.
+
+**1. GCP 프로젝트 설정**
+```bash
+# GCP 프로젝트 ID 확인/설정
+gcloud config set project YOUR_PROJECT_ID
+```
+
+**2. Secret Manager API 활성화**
+```bash
+gcloud services enable secretmanager.googleapis.com
+```
+
+**3. API 키를 Secret Manager에 저장**
+```bash
+# Gemini API Key 저장
+echo "YOUR_GEMINI_API_KEY" | gcloud secrets create gemini-api-key --data-file=-
+
+# Supadata API Key 저장
+echo "YOUR_SUPADATA_API_KEY" | gcloud secrets create supadata-api-key --data-file=-
+```
+
+**4. 서비스 계정 생성 및 권한 부여**
+```bash
+# 서비스 계정 생성
+gcloud iam service-accounts create youtube-summary-sa \
+    --description="YouTube Summary Service Account" \
+    --display-name="YouTube Summary SA"
+
+# Secret Manager 접근 권한 부여
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="serviceAccount:youtube-summary-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+
+# 서비스 계정 키 생성
+gcloud iam service-accounts keys create ./credentials/service-account-key.json \
+    --iam-account=youtube-summary-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
+```
 
 ## 📦 설치 및 실행 방법
 
@@ -107,21 +159,44 @@ VITE_GEMINI_API_KEY=your_gemini_api_key_here
 VITE_SUPADATA_API_KEY=your_supadata_api_key_here
 ```
 
+**⚠️ 보안 주의사항:**
+- `.env` 파일은 개발용으로만 사용하세요
+- 프로덕션 환경에서는 반드시 GCP Secret Manager를 사용하세요
+- API 키가 클라이언트 사이드에 노출될 수 있으므로 주의하세요
+
 ### 2️⃣ Docker로 실행
 
-#### 방법 A: Docker Compose 사용 (권장)
+#### 방법 A: 환경변수 사용 (개발 및 테스트용)
 
 ```bash
 # 1. 환경변수 설정
-cp .env.example .env
-# .env 파일에 API 키 입력
+export VITE_GEMINI_API_KEY="your_gemini_api_key"
+export VITE_SUPADATA_API_KEY="your_supadata_api_key"
 
 # 2. 빌드 및 실행
-docker-compose -f docker-compose.prod.yml up -d
-
-# 3. 접속
-# http://localhost:4500
+docker compose build --no-cache
+docker compose up -d
 ```
+
+#### 방법 B: GCP Secret Manager 사용 (프로덕션용)
+
+```bash
+# 1. GCP 서비스 계정 키 준비
+mkdir -p credentials
+# 위의 GCP Secret Manager 설정에서 생성한 service-account-key.json을 credentials/ 디렉토리에 복사
+
+# 2. GCP 프로젝트 ID 설정 (선택사항, 기본값: pearlplaygroud)
+export GOOGLE_CLOUD_PROJECT=your-project-id
+
+# 3. GCP Secret Manager를 사용하여 빌드 및 실행
+./build-with-gcp.sh
+```
+
+## 🌐 접속
+
+애플리케이션이 실행되면 다음 URL로 접속할 수 있습니다:
+- **로컬**: http://localhost:4500
+- **외부 접속**: http://[서버IP]:4500
 
 #### 방법 B: Docker 단독 실행
 
