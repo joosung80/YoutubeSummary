@@ -132,8 +132,7 @@ export async function generateReport({
   transcript: string
   mode: Mode
 }): Promise<LLMResult> {
-  const { configAsync } = await import('./config')
-  const config = await configAsync()
+  const { config } = await import('./config')
   const apiKey = config.geminiApiKey
   if (!transcript?.trim()) throw new Error('Transcript is empty')
 

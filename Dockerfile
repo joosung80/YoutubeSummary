@@ -8,16 +8,16 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production=false
+RUN npm install
 
 # Copy source code
 COPY . .
 
-# GCP Project ID for Secret Manager access
-ARG GOOGLE_CLOUD_PROJECT
-ENV GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT
-
-# Remove API key build args - now using GCP Secret Manager
+# Environment variables will be provided by docker-compose
+ARG VITE_GEMINI_API_KEY
+ARG VITE_SUPADATA_API_KEY
+ENV VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY
+ENV VITE_SUPADATA_API_KEY=$VITE_SUPADATA_API_KEY
 
 # Build the application
 RUN npm run build

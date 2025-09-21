@@ -80,18 +80,17 @@ Supadata API는 YouTube 자막 추출을 위한 핵심 서비스입니다. 간�
 - API 키는 GCP Secret Manager로 관리하여 보안을 유지하세요
 - 키 유출 시 즉시 재발급받아 교체하시기 바랍니다
 
-#### 🔐 API Key 우선순위
+#### 🔐 API Key 관리 방식
 
-이 애플리케이션은 다음 순서로 API 키를 찾습니다:
+이 애플리케이션은 **Shell Script를 통한 GCP Secret Manager 통합**을 사용합니다:
 
-1. **환경변수** (최우선) - 개발 및 로컬 테스트용
-2. **GCP Secret Manager** (폴백) - 프로덕션 환경용
-
-환경변수가 설정되어 있으면 GCP Secret Manager를 사용하지 않고, 환경변수가 없을 때만 GCP Secret Manager에서 키를 가져옵니다.
+1. **환경변수 우선**: 이미 설정되어 있으면 GCP Secret Manager 호출 안함
+2. **GCP Secret Manager 폴백**: 환경변수가 없을 때만 GCP에서 가져옴
+3. **빌드 시점 주입**: Shell Script → GCP Secret Manager → 환경변수 → Docker 빌드 → 정적 파일
 
 #### 🔐 GCP Secret Manager 설정 방법
 
-프로덕션 환경에서는 GCP Secret Manager를 사용하여 API 키를 안전하게 관리할 수 있습니다.
+프로덕션 환경에서 GCP Secret Manager를 사용하여 API 키를 안전하게 관리합니다.
 
 **1. GCP 프로젝트 설정**
 ```bash
@@ -113,22 +112,18 @@ echo "YOUR_GEMINI_API_KEY" | gcloud secrets create gemini-api-key --data-file=-
 echo "YOUR_SUPADATA_API_KEY" | gcloud secrets create supadata-api-key --data-file=-
 ```
 
-**4. 서비스 계정 생성 및 권한 부여**
+**4. 서비스 계정 권한 부여 (GCP VM에서 실행 시)**
+
+GCP VM에서 실행하는 경우 기본 서비스 계정에 권한을 부여하면 됩니다:
+
 ```bash
-# 서비스 계정 생성
-gcloud iam service-accounts create youtube-summary-sa \
-    --description="YouTube Summary Service Account" \
-    --display-name="YouTube Summary SA"
-
-# Secret Manager 접근 권한 부여
+# 현재 서비스 계정에 Secret Manager 접근 권한 부여
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-    --member="serviceAccount:youtube-summary-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --member="serviceAccount:YOUR_COMPUTE_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
-
-# 서비스 계정 키 생성
-gcloud iam service-accounts keys create ./credentials/service-account-key.json \
-    --iam-account=youtube-summary-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
+
+**참고**: GCP VM에서 실행하는 경우 메타데이터 서버를 통해 자동 인증되므로 별도의 서비스 계정 키 파일이 필요하지 않습니다.
 
 ## 📦 설치 및 실행 방법
 
@@ -160,13 +155,26 @@ VITE_SUPADATA_API_KEY=your_supadata_api_key_here
 ```
 
 **⚠️ 보안 주의사항:**
-- `.env` 파일은 개발용으로만 사용하세요
-- 프로덕션 환경에서는 반드시 GCP Secret Manager를 사용하세요
-- API 키가 클라이언트 사이드에 노출될 수 있으므로 주의하세요
+- **Shell Script 방식**: 빌드 시점에만 GCP Secret Manager 접근, 런타임에는 정적 파일 사용
+- **API Key 노출**: 정적 파일에 API key가 포함되므로 클라이언트 사이드에서 접근 가능
+- **권장사항**: 프로덕션 환경에서는 서버 사이드 API 사용을 고려하세요
+- **대안**: 환경변수는 개발/테스트용으로만 사용하세요
 
 ### 2️⃣ Docker로 실행
 
-#### 방법 A: 환경변수 사용 (개발 및 테스트용)
+#### 방법 A: GCP Secret Manager 사용 (권장)
+
+```bash
+# 1. GCP Secret Manager를 사용하여 빌드 및 실행
+./build-with-secrets.sh
+```
+
+이 스크립트는 다음을 수행합니다:
+- 환경변수 확인 (있으면 사용)
+- 환경변수가 없으면 GCP Secret Manager에서 API key 가져오기
+- Docker 빌드 및 실행
+
+#### 방법 B: 환경변수 직접 사용 (개발용)
 
 ```bash
 # 1. 환경변수 설정
@@ -178,19 +186,46 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
-#### 방법 B: GCP Secret Manager 사용 (프로덕션용)
+## 🔄 Shell Script 동작 방식
+
+### `build-with-secrets.sh` 상세 동작
 
 ```bash
-# 1. GCP 서비스 계정 키 준비
-mkdir -p credentials
-# 위의 GCP Secret Manager 설정에서 생성한 service-account-key.json을 credentials/ 디렉토리에 복사
+#!/bin/bash
+# 1. 환경변수 확인
+if [ -n "$VITE_GEMINI_API_KEY" ] && [ -n "$VITE_SUPADATA_API_KEY" ]; then
+    echo "✅ Using existing environment variables"
+else
+    # 2. GCP Secret Manager에서 API key 가져오기
+    export VITE_GEMINI_API_KEY=$(gcloud secrets versions access latest --secret="gemini-api-key")
+    export VITE_SUPADATA_API_KEY=$(gcloud secrets versions access latest --secret="supadata-api-key")
+fi
 
-# 2. GCP 프로젝트 ID 설정 (선택사항, 기본값: pearlplaygroud)
-export GOOGLE_CLOUD_PROJECT=your-project-id
-
-# 3. GCP Secret Manager를 사용하여 빌드 및 실행
-./build-with-gcp.sh
+# 3. Docker 빌드 및 실행
+docker compose build --no-cache
+docker compose up -d
 ```
+
+### 🔐 API Key 주입 과정
+
+```
+Shell Script → GCP Secret Manager → 환경변수 → Docker Build → Vite 빌드 → 정적 파일
+```
+
+**단계별 설명:**
+1. **Shell Script 실행**: `./build-with-secrets.sh`
+2. **GCP Secret Manager**: API key 가져오기 (환경변수가 없을 때만)
+3. **환경변수 설정**: `export VITE_GEMINI_API_KEY=...`
+4. **Docker 빌드**: 환경변수를 build args로 전달
+5. **Vite 빌드**: 환경변수를 JavaScript에 포함
+6. **정적 파일**: 브라우저에서 사용
+
+### ⚡ 장점
+
+- **간단함**: 복잡한 서버 사이드 API 불필요
+- **안전함**: 빌드 시점에만 GCP Secret Manager 접근
+- **유연함**: 환경변수 우선순위로 개발/프로덕션 환경 지원
+- **효율적**: 캐시된 빌드 이미지로 빠른 배포
 
 ## 🌐 접속
 
@@ -198,58 +233,45 @@ export GOOGLE_CLOUD_PROJECT=your-project-id
 - **로컬**: http://localhost:4500
 - **외부 접속**: http://[서버IP]:4500
 
-#### 방법 B: Docker 단독 실행
-
-```bash
-# 빌드
-docker build -t youtube-summary \
-  --build-arg VITE_GEMINI_API_KEY=your_gemini_key \
-  --build-arg VITE_SUPADATA_API_KEY=your_supadata_key \
-  -f Dockerfile.standalone .
-
-# 실행
-docker run -d -p 4500:80 youtube-summary
-
-# 또는 환경변수로 실행
-docker run -d -p 4500:80 \
-  -e VITE_GEMINI_API_KEY=your_gemini_key \
-  -e VITE_SUPADATA_API_KEY=your_supadata_key \
-  youtube-summary
-```
-
 ## 🔧 프로덕션 배포
 
-### Docker Hub에서 실행
+### GCP VM에서 배포
 
 ```bash
-# Docker Hub에서 이미지 pull (예시)
-docker pull your-username/youtube-summary:latest
+# 1. GCP VM에 프로젝트 클론
+git clone <repository-url>
+cd YoutubeSummary
 
-# 환경변수와 함께 실행
+# 2. GCP Secret Manager 설정 (위 섹션 참조)
+
+# 3. Shell Script로 배포
+./build-with-secrets.sh
+```
+
+### Docker Hub에서 배포
+
+```bash
+# 1. 이미지 빌드 및 푸시
+docker build -t your-username/youtube-summary .
+docker push your-username/youtube-summary
+
+# 2. 배포 시 환경변수 설정
 docker run -d -p 4500:80 \
   -e VITE_GEMINI_API_KEY=your_gemini_key \
   -e VITE_SUPADATA_API_KEY=your_supadata_key \
-  your-username/youtube-summary:latest
-```
-
-### 커스텀 포트 설정
-
-```bash
-# 포트 변경 (예: 8080)
-PORT=8080 docker-compose -f docker-compose.prod.yml up -d
+  your-username/youtube-summary
 ```
 
 ## 🔒 보안 및 환경변수
 
-### 환경변수 우선순위
-1. 런타임 환경변수
-2. `.env` 파일
-3. 빌드타임 ARG
+### API Key 우선순위
+1. **환경변수** (최우선): 개발/테스트용
+2. **GCP Secret Manager** (폴백): 프로덕션용
 
 ### 보안 권장사항
-- 프로덕션에서는 `.env` 파일을 버전 관리에 포함하지 마세요
-- API 키는 환경변수로 관리하세요
-- Docker 이미지에 API 키를 하드코딩하지 마세요
+- **Shell Script 방식**: 빌드 시점에만 GCP Secret Manager 접근
+- **API Key 노출**: 정적 파일에 포함되므로 클라이언트 사이드 접근 가능
+- **프로덕션 권장**: 서버 사이드 API 사용 고려
 
 ## 📁 프로젝트 구조
 
@@ -266,12 +288,11 @@ YoutubeSummary/
 │   │   ├── supadata.ts     # Supadata API 연동
 │   │   └── youtube.ts      # YouTube 유틸리티
 │   └── App.tsx
-├── .env.example            # 환경변수 템플릿
-├── docker-compose.yml      # 개발용 Docker Compose
-├── docker-compose.prod.yml # 프로덕션용 Docker Compose
-├── Dockerfile              # 표준 Dockerfile
-├── Dockerfile.standalone   # 독립 실행용 Dockerfile
-└── nginx.conf             # Nginx 설정
+├── build-with-secrets.sh   # GCP Secret Manager 통합 빌드 스크립트
+├── docker-compose.yml      # Docker Compose 설정
+├── Dockerfile              # Docker 빌드 파일
+├── nginx.conf             # Nginx 설정
+└── README.md              # 프로젝트 문서
 ```
 
 ## 🛠️ 개발
@@ -293,16 +314,34 @@ npm run preview
 
 ## 🐞 문제 해결
 
+### GCP Secret Manager 관련 오류
+```bash
+# 1. GCP 인증 확인
+gcloud auth list
+
+# 2. 프로젝트 설정 확인
+gcloud config get-value project
+
+# 3. Secret Manager API 활성화
+gcloud services enable secretmanager.googleapis.com
+
+# 4. 서비스 계정 권한 확인
+gcloud projects get-iam-policy YOUR_PROJECT_ID
+```
+
 ### API 키 관련 오류
 애플리케이션에서 빨간색 경고가 표시되면:
-1. `.env` 파일이 존재하는지 확인
-2. API 키가 올바르게 설정되었는지 확인
-3. API 키가 유효한지 확인
+1. `./build-with-secrets.sh` 스크립트 실행 확인
+2. GCP Secret Manager에서 API key 접근 가능한지 확인
+3. 환경변수가 올바르게 설정되었는지 확인
 
 ### Docker 빌드 실패
 ```bash
 # 캐시 없이 다시 빌드
-docker-compose -f docker-compose.prod.yml build --no-cache
+docker compose build --no-cache
+
+# 또는 Shell Script 사용
+./build-with-secrets.sh
 ```
 
 ### 포트 충돌
@@ -311,7 +350,7 @@ docker-compose -f docker-compose.prod.yml build --no-cache
 sudo netstat -tlnp | grep :4500
 
 # 다른 포트 사용
-PORT=8080 docker-compose -f docker-compose.prod.yml up -d
+# docker-compose.yml에서 포트 변경 후 재빌드
 ```
 
 ## 📄 라이선스
